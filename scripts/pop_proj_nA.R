@@ -11,58 +11,52 @@
 
 rm(list=ls())
 
-.libPaths("~/r_libs")
+lib = "./r_libs"
 
-library("sp", lib.loc = "~/r_libs")  
-library("raster", lib.loc = "~/r_libs")  
-#library("ggplot2", lib.loc = "~/r_libs") 
-library("geosphere", lib.loc = "~/r_libs") 
-library("scales", lib.loc = "~/r_libs") 
-library("Matrix", lib.loc = "~/r_libs")
-library("rgdal", lib.loc = "~/r_libs")
+library("sp", lib.loc = lib)  
+library("raster", lib.loc = lib)  
+library("geosphere", lib.loc = lib) 
+library("scales", lib.loc = lib) 
+library("Matrix", lib.loc = lib)
+library("rgdal", lib.loc = lib)
 
 #for parallel processing
-library("parallel", lib.loc = "~/r_libs") 
-library("foreach", lib.loc = "~/r_libs") 
-library("doParallel", lib.loc = "~/r_libs") 
-library("igraph", lib.loc = "~/r_libs") 
-library("doSNOW", lib.loc = "~/r_libs") 
+library("parallel", lib.loc = lib) 
+library("foreach", lib.loc = lib) 
+library("doParallel", lib.loc = lib) 
+library("igraph", lib.loc = lib) 
+library("doSNOW", lib.loc = lib) 
 
 #-------------------------------------------#
 # Step 1 - Define basic information of task #
 #-------------------------------------------#
 task          <- "pop_proj"
-id            <- c(8, 12, 70, 818, 376, 422, 434, 499, 504, 275, 760, 788, 792)
-iso           <- c("ALB", "DZA", "BIH", "EGY", "ISR", "LBN", "LBY", "MNE", "MAR", "PSE", "SYR", "TUN", "TUR")
-reg           <- "SE"                 
-ssp           <- "ssp3"              
-scen          <- "nA"                
+id            <- c(8, 12, 70, 818, 376, 422, 434, 499, 504, 275, 760, 788, 792) #ISO3 country codes numeric
+iso           <- c("ALB", "DZA", "BIH", "EGY", "ISR", "LBN", "LBY", "MNE", "MAR", "PSE", "SYR", "TUN", "TUR") #ISO3 country codes letters
+reg           <- "SE" #geographical region (due to differing assumptions)                
+ssp           <- "ssp3" #SSP to be run; possible options: ssp1, ssp3, ssp5             
+scen          <- "nA" #adaptation scenario 
+gw            <- ifelse(reg == "SE", 10, 20) #gravity window size for distance-decay function
 
-gw            <- ifelse(reg == "SE", 10, 20)
+cores         <- 5 #define the number of cores to be used for parallel processing
 
 
-## load the data based on where the script is run ##
-run <- "rz"    # change accordingly 
+## define paths for loading the data ##
+path <- "/path/to/data" # path to input data
+path_m <- "/path/to/distance_matrix" # path to distance matrix
 
-if (run == "rz") {
-  cores <- 5      # we can use up to 12!
-  path <- "/work_beegfs/sungg688"
-  
-  load(paste(paste(paste(path, task, task, sep = "/"), "input", ssp, sep = "_"), "RData", sep = "."))
-  
-  path <- "/work_beegfs/sungg688" # set path again
-  path_m <- "/work_beegfs/sungg688/dist_m" # path for distance matrix
-} else {
-  cores <- 4
-  #path          <- "E:/model_extension"  #for laptop
-  path <- "G:/PhD/Fulbright/Demographic_model/model_extension" # for PC/hardrive
-  setwd(paste(path, sep = "/"))
-  
-  load(paste(paste(paste(path, task, task, sep = "/"), "input", ssp, sep = "_"), "RData", sep = "."))
-  
-  path <- "G:/PhD/Fulbright/Demographic_model/model_extension"
-  path_m <- "Theo/dist_m"
-}
+
+## load the data  ##
+
+
+
+#xxx   -- include here!! 
+#xxx
+#xxx
+#xxx
+#xxx
+
+
 
 
 #---------------------------------#
@@ -593,7 +587,7 @@ foreach(k = 1:length(id),
   mask00 <- mask_cntr[[which(id[k]==ids)]][[1]]
   
   # mask -> converted to matrix
-  if (id[k] == 12 || id[k] == 434 || id[k] == 818) { # if dza or lby to be projected
+  if (id[k] == 12 || id[k] == 434 || id[k] == 818) { # if dza, lby, or egy to be projected
     buf30 <- resample(buf, mask00, method = "ngb")
     mask_t <- mask00 
     
@@ -642,11 +636,7 @@ foreach(k = 1:length(id),
   alpha_u <- rasterToPoints(alpha_u)[,3]
   alpha_r <- rasterToPoints(alpha_r)[,3]
   }
-  
-  ####---------------- for testing set alphas to 1 -------------------####
-  #alpha_u <- rep(1, length(alpha_u))
-  #alpha_r <- rep(1, length(alpha_r))
-  
+
   
   ## coast ##
   # crop coastal mask data to respective country
