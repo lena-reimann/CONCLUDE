@@ -1,72 +1,147 @@
-############################
-## Population projections ##
-############################
+##########################################################
+## Population projections accounting for sea-level rise ##
+##########################################################
 # by Lena Reimann
-# Jan 5, 2021
+# Aug 15, 2022
 
-# Goal: produce population projections 
-# comments: # 1) for calculation on rz cluster: two scripts --> (1) data prep; (2) parallel processing
-            # 2) v1_2: set rural pot to 0 for cells where urban pop in base year > 0
-            # 3) account for countries that are entirely urban
+# Goal: produce population projections that account for the effects of SLR on spatial changes in population distributions 
+# comments: # 1) basic model setup: Reimann et al. (2021) Accounting for internal migration in spatial population projections-a gravity-based modeling approach using the Shared Socioeconomic Pathways. In: Environ Res Lett 16, 074025. DOI: https://doi.org/10.1088/1748-9326/ac0b66
+            # 2) SLR-induced migration and adaptation policies model setup: Reimann et al. (2022) xxxxx
+            # 3) possible scenario combinations: sp1, ssp3, spp5; nA, wA
 
 rm(list=ls())
 
-.libPaths("~/r_libs")
+lib = "./r_libs"
 
-library("sp", lib.loc = "~/r_libs")  
-library("raster", lib.loc = "~/r_libs")  
-#library("ggplot2", lib.loc = "~/r_libs") 
-library("geosphere", lib.loc = "~/r_libs") 
-library("scales", lib.loc = "~/r_libs") 
-library("Matrix", lib.loc = "~/r_libs")
-library("rgdal", lib.loc = "~/r_libs")
+library("sp", lib.loc = lib)  
+library("raster", lib.loc = lib)  
+library("geosphere", lib.loc = lib) 
+library("scales", lib.loc = lib) 
+library("Matrix", lib.loc = lib)
+library("rgdal", lib.loc = lib)
 
 #for parallel processing
-library("parallel", lib.loc = "~/r_libs") 
-library("foreach", lib.loc = "~/r_libs") 
-library("doParallel", lib.loc = "~/r_libs") 
-library("igraph", lib.loc = "~/r_libs") 
-library("doSNOW", lib.loc = "~/r_libs") 
+library("parallel", lib.loc = lib) 
+library("foreach", lib.loc = lib) 
+library("doParallel", lib.loc = lib) 
+library("igraph", lib.loc = lib) 
+library("doSNOW", lib.loc = lib) 
 
-#-------------------------------------------#
-# Step 1 - Define basic information of task #
-#-------------------------------------------#
+#-------------------------------------------------#
+#### Step 1 - Define basic information of task ####
+#-------------------------------------------------#
 task          <- "pop_proj"
-id            <- c(8, 12, 70, 818, 376, 422, 434, 499, 504, 275, 760, 788, 792)
-iso           <- c("ALB", "DZA", "BIH", "EGY", "ISR", "LBN", "LBY", "MNE", "MAR", "PSE", "SYR", "TUN", "TUR")
-reg           <- "SE"                 
-ssp           <- "ssp5"              
-scen          <- "wA"                
+id            <- c(8, 12, 70, 818, 376, 422, 434, 499, 504, 275, 760, 788, 792) #ISO3 country codes numeric
+iso           <- c("ALB", "DZA", "BIH", "EGY", "ISR", "LBN", "LBY", "MNE", "MAR", "PSE", "SYR", "TUN", "TUR") #ISO3 country codes letters
+reg           <- "SE" #geographical region: SE, N            
+ssp           <- "ssp3" #SSP to be run: ssp1, ssp3, ssp5             
+scen          <- "nA" #adaptation scenario: nA, wA
+gw            <- ifelse(reg == "SE", 10, 20) #gravity window size for distance-decay function
 
-gw            <- ifelse(reg == "SE", 10, 20)
+cores         <- 5 #define the number of cores to be used for parallel processing (i.e. countries run in parallel)
 
 
-## load the data based on where the script is run ##
-run <- "rz"    # change accordingly 
+#--------------------------#
+#### Step 2 - Load data ####
+#--------------------------#
 
-if (run == "rz") {
-  cores <- 5      # we can use up to 12!
-  path <- "/work_beegfs/sungg688"
+## define paths for loading the data ##
+path <- "path_to_data" # path to input data
+path_m <- "path_to_distance_matrix" # path to distance matrix: sparse distance matrix per country of the respective gravity window of the distance-decay effect (see Reimann et al. 2021); produced with the 'Matrix' package
+
+
+# define time steps
+t <- seq(2010, 2100, by=10)  # projections years including 2010 (baseline)
+t_proj <- seq(2020,2100, by= 10) # maybe add fove year step later in case the process is fast (but: SLR variables also only produced in 10-year steps)
+
+
+## load the data  ##
+# load country ids based on Gridded Population of the World (GPW)
+gpw_ids <- read.csv("cntr_ids.csv")
+isos <- gpw_ids$iso
+ids <- gpw_ids$gpw_id
+
+
+## (1) load data used in all scenario combinations (see Reimann et al. 2021)
+
+# spatial mask for the entire Mediterranean region
+mask00_med <- raster(paste(path, "sp_mask.tif", sep = "/"))
+
+# Ai as calibrated and preprocessed for urban versus rural locations
+alpha_u_med <- raster(paste(path, "alpha_u.tif", sep = "/"))
+alpha_r_med <- raster(paste(path, "alpha_r.tif", sep = "/"))
+
+# coastal mask and urban mask
+cst_med <- raster(paste(path, "cst.tif", sep = "/")) #defining coastal areas (= Low Elevation Coastal Zone (LECZ) + 20 km coastline buffer)
+urb_med <- raster(paste(path, "urb.tif", sep = "/")) #defining urban areas (based on SMOD and adjusted to the country-specific definition of urban population)
+
+# population base year data
+pop_rur_med <- raster(paste(path, "pop_rur.tif", sep = "/")) #rural
+pop_urb_med <- raster(paste(path, "pop_urb.tif", sep = "/")) #urban
+pop_tot_med <- raster(paste(path, "pop_tot.tif", sep = "/")) #total
+
+# distance raster produced with euclidean distance tool for reducing the number of grid cells of large countries in uninhabitable locations
+buf <- raster(paste(path, "distance.tif", sep = "/")) 
+buf[buf > 30000] <- NA
+buf[!is.na(buf)] <- 1
+
+#  load ssp projections file with all ssps, time steps, and countries
+ssp_proj <- read.csv(paste(path, "ssp_proj.csv", sep = "/"), stringsAsFactors = F) 
+
+
+## (2) load data specific to the ssp, rcp, and adaptation scenario to be run (see Reimann et al. 2022)
+
+if (ssp == "ssp1") {
+  # define t for spatial mask (loaded further down): leave out the year 2010 (because we start projection for 2020 and the 2010 mask already accounts for SLR)
+  t_sp_mask <- c(2000, 2020, 2030, 2040, 2050, 2060, 2070, 2080, 2090, 2100) 
   
-  load(paste(paste(paste(path, task, task, sep = "/"), "input", ssp, sep = "_"), "RData", sep = "."))
+  # inundation rasters per ssp-rcp combination and adaptation scenario
+  if (scen == "nA") { #submergence per t based on rcp2.6
+    name <- paste0(paste(paste(path, "inun_ssp1-rcp26_nA", sep = "/"), t, sep = "_"), ".tif")
+    inun <- stack(name)
+  } else { #inundation raster of retreat return period per t based on rcp2.6 in unprotected locations (# we do not need the submergence layer because already part of the retreat layer)
+    name <- paste0(paste(paste(path, "inun_ssp1-rcp26_wA", sep = "/"), t, sep = "_"), ".tif")
+    inun <- stack(name)
+  }
   
-  path <- "/work_beegfs/sungg688" # set path again
-  path_m <- "/work_beegfs/sungg688/dist_m" # path for distance matrix
-} else {
-  cores <- 4
-  #path          <- "E:/model_extension"  #for laptop
-  path <- "G:/PhD/Fulbright/Demographic_model/model_extension" # for PC/hardrive
-  setwd(paste(path, sep = "/"))
-  
-  load(paste(paste(paste(path, task, task, sep = "/"), "input", ssp, sep = "_"), "RData", sep = "."))
-  
-  path <- "G:/PhD/Fulbright/Demographic_model/model_extension"
-  path_m <- "Theo/dist_m"
+  } else if (ssp == "ssp3") {
+    # define t for spatial mask (loaded further down): 2000 (no change in habitability)
+    t_sp_mask <- c(2000) 
+    
+    # inundation rasters per ssp-rcp combination and adaptation scenario
+    if (scen == "nA") { #submergence per t based on rcp4.5
+      name <- paste0(paste(paste(path, "inun_ssp3-rcp45_nA", sep = "/"), t, sep = "_"), ".tif")
+      inun <- stack(name)
+    } else { #submergence per t based on rcp4.5 in unprotected locations
+      name <- paste0(paste(paste(path, "inun_ssp3-rcp45_wA", sep = "/"), t, sep = "_"), ".tif")
+      inun <- stack(name)
+    }
+    
+  } else {
+    #define t for spatial mask (loaded further down): 2000, 2010 (coastline buffer only)
+    t_sp_mask <- c(2000, 2010)
+    
+    # inundation rasters per ssp-rcp combination and adaptation scenario
+    if (scen == "nA") { #submergence per t based on rcp8.5
+      name <- paste0(paste(paste(path, "inun_ssp5-rcp85_nA", sep = "/"), t, sep = "_"), ".tif")
+      inun <- stack(name)
+    } else { #submergence per t based on rcp8.5 in unprotected locations
+      name <- paste0(paste(paste(path, "inun_ssp5-rcp85_wA", sep = "/"), t, sep = "_"), ".tif")
+      inun <- stack(name)
+    }
+}
+
+# load spatial mask
+mask_cntr <- list()
+for (i in seq(ids)) {
+  name <- paste0(paste(paste0(paste(paste(path, ssp, "sp_mask", sep = "/"), ssp, "id", sep = "_"), ids[i]), t_sp_mask, sep = "_"), ".tif")  
+  mask_cntr[[i]] <- stack(name)
 }
 
 
+
 #---------------------------------#
-#### Step 2 - define functions ####
+#### Step 3 - define functions ####
 #---------------------------------#
 
 set0 <- function(x) {x[ is.na(x)] <- 0; return(x)}
@@ -458,9 +533,9 @@ urb_rcl <- function(urb_mask, tot_proj_tif, urbnp) {
 
 
 
-# ------------------------------ #
-#### Step 3 - preprocess data ####
-# ------------------------------ #
+#--------------------------------#
+#### Step 4 - preprocess data ####
+#--------------------------------#
 
 ## betas for each ssp ##
 # betas established during calibration process
@@ -561,15 +636,9 @@ if (ssp == "ssp1") {
 }
 
 
-## define which inundation data to use (based on the scenario)
-if (scen == "wA") {
-  inun <- inun_wA
-} else if (scen == "nA") {
-  inun <- inun_nA
-} 
 
 #--------------------------------------------------------------#
-#### Step 4 - Loop through each cntr to produce projections ####
+#### Step 5 - Loop through each cntr to produce projections ####
 #--------------------------------------------------------------#
 start <- Sys.time()
 start
@@ -592,38 +661,91 @@ foreach(k = 1:length(id),
   # extract mask data needed
   mask00 <- mask_cntr[[which(id[k]==ids)]][[1]]
   
-  if (scen == "wA") {
+  # different approaches per scenario combination
+  if (scen == "nA" || scen == "wA" && ssp == "ssp3") {
+    ## for very large cntr with limited area available for settlement (i.e. dza, lby, egy) ## 
+    #reduce number of cells to be processed based on a buffer layer
+    if (id[k] == 12 || id[k] == 434 || id[k] == 818) { # if dza, lby, or egy to be projected
+      buf30 <- resample(buf, mask00, method = "ngb")
+      mask_t <- mask00 
+      
+      # if dza reduce the buffer to 20 km to reduce processing time
+      if (id[k] == 12) {
+        buf20 <- buf30
+        for (z in 1:10) {
+          bou <- boundaries(buf20, type = 'inner', directions = 8)
+          buf20[bou==1] <- NA 
+        }
+        
+        mask_t[is.na(buf20)] <- NA
+        mask <- rasterToPoints(mask_t) 
+        
+      } else { # use 30km buffer for lby and egy
+        mask_t[is.na(buf30)] <- NA
+        mask <- rasterToPoints(mask_t)        
+      }
+      
+    } else { # for all other countries
+      mask <- rasterToPoints(mask00)
+    }
+    
+  } else if (scen == "wA" && ssp == "ssp1") {
+    # mask per time step to include setback zones -> converted to matrices
+    mask <- list()
+    for (i in seq(t)) {
+      if (id[k] == 12 || id[k] == 434 || id[k] == 818) {
+        buf30 <- resample(buf, mask00, method = "ngb")
+        mask_t <- mask_cntr[[which(id[k]==ids)]][[i]]
+        
+        # if dza reduce the buffer to 20km to reduce processing time
+        if (id[k] == 12) {
+          buf20 <- buf30
+          for (z in 1:10) {
+            bou <- boundaries(buf20, type = 'inner', directions = 8)
+            buf20[bou==1] <- NA 
+          }
+          
+          mask_t[is.na(buf20)] <- NA
+          mask[[i]] <- rasterToPoints(mask_t) 
+          
+        } else { # use 30km buffer for lby and egy
+          mask_t[is.na(buf30)] <- NA
+          mask[[i]] <- rasterToPoints(mask_t)        
+        }
+        
+      } else { # for all other countries
+        mask[[i]] <- rasterToPoints(mask_cntr[[which(id[k]==ids)]][[i]])
+      }
+    } # end of i loop
+
+  } else if (scen == "wA" && ssp == "ssp5") {
     # mask of 2010 for the projections (includes setback zones as of ICZM protocol)
     mask <- mask_cntr[[which(id[k]==ids)]][[2]]
     
-  } else { # for nA scenario
-    # mask of 2000
-    mask <- mask_cntr[[which(id[k]==ids)]][[1]]
-  }
-  
-  # mask -> converted to matrix
-  if (id[k] == 12 || id[k] == 434 || id[k] == 818) { # if dza or lby to be projected
-    buf30 <- resample(buf, mask, method = "ngb")
-    mask_t <- mask 
-    
-    # if dza reduce the buffer to 20 km to reduce processing time
-    if (id[k] == 12) {
-      buf20 <- buf30
-      for (z in 1:10) {
-        bou <- boundaries(buf20, type = 'inner', directions = 8)
-        buf20[bou==1] <- NA 
+    # mask -> converted to matrix
+    if (id[k] == 12 || id[k] == 434 || id[k] == 818) { 
+      buf30 <- resample(buf, mask, method = "ngb")
+      mask_t <- mask 
+      
+      # if dza reduce the buffer to 20 km to reduce processing time
+      if (id[k] == 12) {
+        buf20 <- buf30
+        for (z in 1:10) {
+          bou <- boundaries(buf20, type = 'inner', directions = 8)
+          buf20[bou==1] <- NA 
+        }
+        
+        mask_t[is.na(buf20)] <- NA
+        mask <- rasterToPoints(mask_t) 
+        
+      } else { # use 30km buffer for lby and egy
+        mask_t[is.na(buf30)] <- NA
+        mask <- rasterToPoints(mask_t)        
       }
       
-      mask_t[is.na(buf20)] <- NA
-      mask <- rasterToPoints(mask_t) 
-      
-    } else { # use 30km buffer for lby and egy
-      mask_t[is.na(buf30)] <- NA
-      mask <- rasterToPoints(mask_t)        
+    } else { # for all other countries
+      mask <- rasterToPoints(mask)
     }
-    
-  } else { # for all other countries
-    mask <- rasterToPoints(mask)
   }
   
   cntr_LL <- mask[,c(1,2)] # get lon/lat based on the spatial mask
@@ -651,11 +773,7 @@ foreach(k = 1:length(id),
   alpha_u <- rasterToPoints(alpha_u)[,3]
   alpha_r <- rasterToPoints(alpha_r)[,3]
   }
-  
-  ####---------------- for testing set alphas to 1 -------------------####
-  #alpha_u <- rep(1, length(alpha_u))
-  #alpha_r <- rep(1, length(alpha_r))
-  
+
   
   ## coast ##
   # crop coastal mask data to respective country
@@ -682,7 +800,7 @@ foreach(k = 1:length(id),
   urb <- mask(urb, mask00)
 
   if (id[k] == 12 || id[k] == 434 || id[k] == 818) { # if dza or lby to be projected
-    if (id == 12) {
+    if (id[k] == 12) {
       urb[is.na(buf20)] <- NA
     } else {
       urb[is.na(buf30)] <- NA
@@ -764,7 +882,7 @@ foreach(k = 1:length(id),
   ## inundation due to SLR ##
   inun_poi <- list()
   # preprocess inun data
-  for (i in seq(t2)) {
+  for (i in seq(t)) {
     rast <- crop(inun[[i]], mask00)
     rast[is.na(rast)] <- 0
     rast <- extend(rast, mask00, value = 0) # for countries that extend further than the inun layer
@@ -806,32 +924,60 @@ foreach(k = 1:length(id),
   # II - produce projections for each cntr #
   #----------------------------------------#
   
-  for (m in 2:M) { 
-    ### a) produce pop projection ###
-    urb_pop[,,m] <- pop_proj_SLR(beta_cu, 
-                                  beta_iu, 
-                                  alpha_u, 
-                                  pop_dens_u, 
-                                  dist_m, 
-                                  cst, 
-                                  tot_pop[,,m-1],
-                                  mask[,3], 
-                                  proj_cntr$urbchng[m], 
-                                  urb_pop[,,m-1],
-                                  inun_poi[[m]]) 
+  
+  ### a) produce pop projection ###
+  for (m in 2:M) {   
+  # differentiate ssp1 wA from the others because of the changing spatial mask
+    if (ssp == "ssp1" && scen = "wA") {
+      urb_pop[,,m] <- pop_proj_SLR(beta_cu, 
+                                   beta_iu, 
+                                   alpha_u, 
+                                   pop_dens_u, 
+                                   dist_m, 
+                                   cst, 
+                                   tot_pop[,,m-1],
+                                   mask[[m]][,3], 
+                                   proj_cntr$urbchng[m], 
+                                   urb_pop[,,m-1],
+                                   inun_poi[[m]]) 
+      
+      rur_pop[,,m] <- pop_proj_SLR(beta_cr, 
+                                   beta_ir, 
+                                   alpha_r, 
+                                   pop_dens_r, 
+                                   dist_m, 
+                                   cst, 
+                                   tot_pop[,,m-1],
+                                   mask[[m]][,3], 
+                                   proj_cntr$rurchng[m], 
+                                   rur_pop[,,m-1],
+                                   inun_poi[[m]]) 
+    } else {
+       urb_pop[,,m] <- pop_proj_SLR(beta_cu, 
+                                    beta_iu, 
+                                    alpha_u, 
+                                    pop_dens_u, 
+                                    dist_m, 
+                                    cst, 
+                                    tot_pop[,,m-1],
+                                    mask[,3], 
+                                    proj_cntr$urbchng[m], 
+                                    urb_pop[,,m-1],
+                                    inun_poi[[m]]) 
     
-    rur_pop[,,m] <- pop_proj_SLR(beta_cr, 
-                                  beta_ir, 
-                                  alpha_r, 
-                                  pop_dens_r, 
-                                  dist_m, 
-                                  cst, 
-                                  tot_pop[,,m-1],
-                                  mask[,3], 
-                                  proj_cntr$rurchng[m], 
-                                  rur_pop[,,m-1],
-                                  inun_poi[[m]]) 
-    
+      rur_pop[,,m] <- pop_proj_SLR(beta_cr, 
+                                   beta_ir, 
+                                   alpha_r, 
+                                   pop_dens_r, 
+                                   dist_m, 
+                                   cst, 
+                                   tot_pop[,,m-1],
+                                   mask[,3], 
+                                   proj_cntr$rurchng[m], 
+                                   rur_pop[,,m-1],
+                                   inun_poi[[m]])      
+    }
+
     # add up the rural and urban population to get total population
     tot_pop[,,m] <- urb_pop[,,m] + rur_pop[,,m]
     
@@ -929,7 +1075,7 @@ print(end - start)
 
 
 # ----------------------------- #
-#### Step 5 - mosaic rasters ####
+#### Step 6 - mosaic rasters ####
 # ----------------------------- #
 
 tot_proj_tif <- list()
