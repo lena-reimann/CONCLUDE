@@ -2,11 +2,11 @@
 ## Population projections accounting for sea-level rise ##
 ##########################################################
 # by Lena Reimann
-# Aug 15, 2022
+# March 15, 2023
 
 # Goal: produce population projections that account for the effects of SLR on spatial changes in population distributions 
 # comments: # 1) basic model setup: Reimann et al. (2021) Accounting for internal migration in spatial population projections-a gravity-based modeling approach using the Shared Socioeconomic Pathways. In: Environ Res Lett 16, 074025. DOI: https://doi.org/10.1088/1748-9326/ac0b66
-            # 2) SLR-induced migration and adaptation policies model setup: Reimann et al. (2022) xxxxx
+            # 2) SLR-induced migration and adaptation policies model setup: Reimann et al. (2023) Exploring spatial feedbacks between adaptation  policies and internal migration patterns due to sea-level rise. In: Nature Communications (accepted manuscript)
             # 3) possible scenario combinations: sp1, ssp3, spp5; nA, wA
 
 rm(list=ls())
@@ -131,7 +131,7 @@ if (ssp == "ssp1") {
     }
 }
 
-# load spatial mask
+# load spatial mask per country
 mask_cntr <- list()
 for (i in seq(ids)) {
   name <- paste0(paste(paste0(paste(paste(path, ssp, "sp_mask", sep = "/"), ssp, "id", sep = "_"), ids[i]), t_sp_mask, sep = "_"), ".tif")  
@@ -554,7 +554,7 @@ if (reg == "SE") {
 # calculate new betas for the scenario 
 if (reg == "SE") { # for southern and eastern Med
   if (ssp == "ssp1") {
-    beta_cr <- beta_cr * 3 # established beta * correction value for the SSP --> change!?
+    beta_cr <- beta_cr * 3 # established beta * correction value for the SSP
     beta_cu <- beta_cu * 3
     beta_ir <- beta_ir * 3
     beta_iu <- beta_iu * 3
@@ -815,9 +815,6 @@ foreach(k = 1:length(id),
   # extract scenario used
   proj_cntr <- proj_cntr[which(proj_cntr$method==ssp),2:ncol(proj_cntr)]
   
-  # extract t used no because we need the pop change between 2010 and 2020 as well (but what if we use pop 2010 as starting point?)
-  #proj_cntr <- proj_cntr[which(proj_cntr$year %in% t_proj),]
-  
   # calculate the pop change per time step for R,U,TOT
   proj_cntr$totchng <- c(proj_cntr[1:nrow(proj_cntr), 3]) - c(NA, proj_cntr[1:nrow(proj_cntr)-1,3])
   proj_cntr$urbchng <- c(proj_cntr[1:nrow(proj_cntr), 5]) - c(NA, proj_cntr[1:nrow(proj_cntr)-1,5])
@@ -908,7 +905,7 @@ foreach(k = 1:length(id),
   
   # define additional variables needed for the projections
   BR      <- dim(cntr_LL)[1]
-  M       <- dim(proj_cntr)[1] # 10 (could also be 11; depends on the csv file created, i.e. the projection steps)
+  M       <- dim(proj_cntr)[1] # 10 (depends on the csv file created, i.e. the projection steps)
   
   ## create arrays of each time step for 2010-2100 ##
   tot_pop  <- array(0, dim = c(BR, 1, M)) # total population, 230387 x 1 x 10
