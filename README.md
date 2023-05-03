@@ -4,4 +4,4 @@ This repository includes the code for running the CONCLUDE model, integrating th
 
 For the basic model setup, please see Reimann et al. (2021): Accounting for internal migration in spatial population projections-a gravity-based modeling approach using the Shared Socioeconomic Pathways. In: Environ Res Lett 16, 074025. DOI: https://doi.org/10.1088/1748-9326/ac0b66.
 
-For the sea-level rise-induced migration and adaptation policies extended model setup, please see Reimann et al. (2023): Exploring spatial feedbacks between adaptation policies and internal migration patterns due to sea-level rise. DOI: xxxxxxxx (accepted manuscript in Nature Communications).
+For the sea-level rise-induced migration and adaptation policies extended model setup, please see Reimann et al. (2023): Exploring spatial feedbacks between adaptation policies and internal migration patterns due to sea-level rise. DOI: https://doi.org/10.1038/s41467-023-38278-y (accepted manuscript in Nature Communications).
