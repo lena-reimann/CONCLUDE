@@ -61,11 +61,13 @@ The **extended model** setup accounting for sea-level rise-induced migration and
 
 <br>
 
-**04_pop_proj_nSLR** (Reimann et al. 2021)
+**04_pop_proj_nSLR (Reimann et al. 2021)**
 -	Produce population projections from 2020 to 2100 for each cntr and each ssp
 -	Use population numbers (urb/rur/tot) per cntr from the SSPs 
 
-**04_pop_proj_wSLR** (Reimann et al. 2023)
+<br>
+
+**04_pop_proj_wSLR (Reimann et al. 2023)**
 -	Produce population projections from 2020 to 2100 for three SSP-RCP combinations (i.e. SSP1-RCP2.6, SSP3-RCP4.5, SSP5-RCP8.5) and two adaptation policy scenarios (i.e. nA, wA).
 -	No adaptation (nA) 
     -   Load inundation layers 
