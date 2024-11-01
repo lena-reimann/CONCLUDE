@@ -6,6 +6,7 @@ The **basic model** setup is described in Reimann et al. (2021): Accounting for 
 
 The **extended model** setup accounting for sea-level rise-induced migration and adaptation policies is described in Reimann et al. (2023): Exploring spatial feedbacks between adaptation policies and internal migration patterns due to sea-level rise. In: Nature Communications 14, 2630. DOI: https://doi.org/10.1038/s41467-023-38278-y.
 
+<br>
 
 ### Overview of model scripts
 
@@ -19,6 +20,8 @@ The **extended model** setup accounting for sea-level rise-induced migration and
     -   Spatial mask / other cntr dataset (to derive coordinates of each raster cell)
 -	**Needs to be done only once and can be used in each following step**
  
+<br>
+
 **01_beta_calibration**
 -	Run beta optimization function
 -	Find the optimal beta value representing the observed changes in population patterns best (i.e. the beta that results in the lowest error) 
@@ -30,6 +33,8 @@ The **extended model** setup accounting for sea-level rise-induced migration and
     -   urb/rur pop of base year and base year + t
 -	Run beta opt function for tolerance ('tol') = 1e-3, both calibration periods, urb versus rur
 -	Write betas in csv file / save entire workspace
+
+<br>
 
 **02_alpha_calculation**
 -	Calculate alphas per cell
@@ -44,6 +49,8 @@ The **extended model** setup accounting for sea-level rise-induced migration and
 -	Scale per cntr: scale to values that can range -100-100
 -	Convert into rasters + merge all cntr rasters 
 
+<br>
+
 **03_validation**
 -	validate model based on calibrated betas and alphas
 -	Run projections script for time steps of available observed data:  
@@ -51,6 +58,8 @@ The **extended model** setup accounting for sea-level rise-induced migration and
     -   Use calibration of 2000-2010 and project to 2015 (less robust)
 -	Load respective betas and alphas (use unscaled alphas)
 -	Calculate error terms (raster-based and for entire cntr/region) 
+
+<br>
 
 **04_pop_proj_nSLR** (Reimann et al. 2021)
 -	Produce population projections from 2020 to 2100 for each cntr and each ssp
@@ -67,4 +76,3 @@ The **extended model** setup accounting for sea-level rise-induced migration and
     -   'Pick up' population in submerged areas + set spatial mask to 0 
     -   Use new spatial mask including setback zones (in SSPs 1 + 5) 
     -   Redistribute population picked up along with population allocation 
-
